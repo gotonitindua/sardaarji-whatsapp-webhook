@@ -28,7 +28,7 @@ gc = gspread.authorize(creds)
 sheet = gc.open_by_url(SHEET_URL).sheet1  # first tab
 
 # ---------------------------------------
-# Header aliasing for mixed names  (>>>)
+# Header aliasing for mixed names
 # ---------------------------------------
 def _normalize(h: str) -> str:
     return "".join(ch for ch in h.lower() if ch.isalnum())
@@ -111,28 +111,32 @@ def inbound():
     if not row_idx:
         return str(resp)
 
-    if body in {"STOP", "UNSUBSCRIBE", "CANCEL", "END", "BAJA", "ALTO"}:
+    # Unsubscribe (Sandbox-safe: SALIR, UNSUBSCRIBE; Production: STOP, BAJA, ALTO, etc.)
+    if body in {"SALIR", "UNSUBSCRIBE", "CANCEL", "END", "STOP", "BAJA", "ALTO"}:
         set_row_values(sheet, row_idx, {
             "dnc": "TRUE",
             "optout_date": iso_now()
         })
         resp.message(
-            "You’ve been unsubscribed. You won’t receive more messages. "
+            "❌ You’ve been unsubscribed from Sardaar Ji promotions. "
             "Reply START to resubscribe. / "
-            "Has sido dado de baja. No recibirás más mensajes. "
+            "❌ Has sido dado de baja de Sardaar Ji. "
             "Responde START para suscribirte de nuevo."
         )
         return str(resp)
 
+    # Resubscribe
     if body in {"START", "YES", "SI"}:
         set_row_values(sheet, row_idx, {
             "dnc": "FALSE",
             "optin_source": "Resubscribe",
             "optin_date": iso_now()
         })
-        resp.message("Subscribed ✅ / Suscripción activada ✅")
+        resp.message("✅ Subscribed / ✅ Suscripción activada")
         return str(resp)
 
+    # Default fallback (optional)
+    resp.message("🍛 Thanks for contacting Sardaar Ji Indian Cuisine Panama!")
     return str(resp)
 
 # ==========================

@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 from datetime import datetime
 from flask import Flask, request, abort
 from twilio.twiml.messaging_response import MessagingResponse
@@ -96,6 +97,30 @@ def is_valid_twilio_request(req) -> bool:
     return validator.validate(req.url, req.form.to_dict(), signature)
 
 # ==========================
+# 📩 Background handlers
+# ==========================
+def handle_unsubscribe(row_idx):
+    try:
+        set_row_values(sheet, row_idx, {
+            "dnc": "TRUE",
+            "optout_date": iso_now()
+        })
+        print(f"[UNSUBSCRIBE] Updated row {row_idx}")
+    except Exception as e:
+        print("Error in unsubscribe:", e)
+
+def handle_resubscribe(row_idx):
+    try:
+        set_row_values(sheet, row_idx, {
+            "dnc": "FALSE",
+            "optin_source": "Resubscribe",
+            "optin_date": iso_now()
+        })
+        print(f"[RESUBSCRIBE] Updated row {row_idx}")
+    except Exception as e:
+        print("Error in resubscribe:", e)
+
+# ==========================
 # 📩 Inbound Handler
 # ==========================
 @app.post("/twilio/inbound")
@@ -111,31 +136,26 @@ def inbound():
     if not row_idx:
         return str(resp)
 
-    # Unsubscribe (Sandbox-safe: SALIR, UNSUBSCRIBE; Production: STOP, BAJA, ALTO, etc.)
+    # Unsubscribe
     if body in {"SALIR", "UNSUBSCRIBE", "CANCEL", "END", "STOP", "BAJA", "ALTO"}:
-        set_row_values(sheet, row_idx, {
-            "dnc": "TRUE",
-            "optout_date": iso_now()
-        })
+        # Respond immediately
         resp.message(
             "❌ You’ve been unsubscribed from Sardaar Ji promotions. "
             "Reply START to resubscribe. / "
             "❌ Has sido dado de baja de Sardaar Ji. "
             "Responde START para suscribirte de nuevo."
         )
+        # Background update
+        threading.Thread(target=handle_unsubscribe, args=(row_idx,)).start()
         return str(resp)
 
     # Resubscribe
     if body in {"START", "YES", "SI"}:
-        set_row_values(sheet, row_idx, {
-            "dnc": "FALSE",
-            "optin_source": "Resubscribe",
-            "optin_date": iso_now()
-        })
         resp.message("✅ Subscribed / ✅ Suscripción activada")
+        threading.Thread(target=handle_resubscribe, args=(row_idx,)).start()
         return str(resp)
 
-    # Default fallback (optional)
+    # Default fallback
     resp.message("🍛 Thanks for contacting Sardaar Ji Indian Cuisine Panama!")
     return str(resp)
 

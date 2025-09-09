@@ -1,6 +1,7 @@
 import os
 import json
 import threading
+import traceback
 from datetime import datetime
 from flask import Flask, request, abort
 from twilio.twiml.messaging_response import MessagingResponse
@@ -97,28 +98,32 @@ def is_valid_twilio_request(req) -> bool:
     return validator.validate(req.url, req.form.to_dict(), signature)
 
 # ==========================
-# 📩 Background handlers
+# 📩 Background handlers with debug
 # ==========================
 def handle_unsubscribe(row_idx):
     try:
+        print(f"[DEBUG] Entering handle_unsubscribe for row {row_idx}")
         set_row_values(sheet, row_idx, {
             "dnc": "TRUE",
             "optout_date": iso_now()
         })
-        print(f"[UNSUBSCRIBE] Updated row {row_idx}")
+        print(f"[UNSUBSCRIBE] Updated row {row_idx} successfully")
     except Exception as e:
-        print("Error in unsubscribe:", e)
+        print("[ERROR] handle_unsubscribe failed:", e)
+        traceback.print_exc()
 
 def handle_resubscribe(row_idx):
     try:
+        print(f"[DEBUG] Entering handle_resubscribe for row {row_idx}")
         set_row_values(sheet, row_idx, {
             "dnc": "FALSE",
             "optin_source": "Resubscribe",
             "optin_date": iso_now()
         })
-        print(f"[RESUBSCRIBE] Updated row {row_idx}")
+        print(f"[RESUBSCRIBE] Updated row {row_idx} successfully")
     except Exception as e:
-        print("Error in resubscribe:", e)
+        print("[ERROR] handle_resubscribe failed:", e)
+        traceback.print_exc()
 
 # ==========================
 # 📩 Inbound Handler
@@ -132,20 +137,21 @@ def inbound():
     body = (request.form.get("Body") or "").strip().upper()
     resp = MessagingResponse()
 
+    print(f"[INBOUND] Message from {from_num}: {body}")
+
     row_idx, _row = find_row_index_by_phone(from_num)
     if not row_idx:
+        print(f"[WARN] No row found for {from_num}")
         return str(resp)
 
     # Unsubscribe
     if body in {"SALIR", "UNSUBSCRIBE", "CANCEL", "END", "STOP", "BAJA", "ALTO"}:
-        # Respond immediately
         resp.message(
             "❌ You’ve been unsubscribed from Sardaar Ji promotions. "
             "Reply START to resubscribe. / "
             "❌ Has sido dado de baja de Sardaar Ji. "
             "Responde START para suscribirte de nuevo."
         )
-        # Background update
         threading.Thread(target=handle_unsubscribe, args=(row_idx,)).start()
         return str(resp)
 

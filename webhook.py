@@ -1,6 +1,5 @@
-import sys
-sys.stdout.reconfigure(line_buffering=True)
 import os
+import sys
 import json
 import threading
 import traceback
@@ -11,15 +10,18 @@ from twilio.request_validator import RequestValidator
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# Force unbuffered logging so print() always shows in Render logs
+sys.stdout.reconfigure(line_buffering=True)
 
 app = Flask(__name__)
+print("[STARTUP] Webhook service started and ready.")
 
 # ==========================
 # 🔐 Environment Config
 # ==========================
-SERVICE_ACCOUNT_JSON = os.environ["SERVICE_ACCOUNT_JSON"]   # full JSON string
-SHEET_URL = os.environ["SHEET_URL"]                         # Google Sheet URL
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "") # optional (for signature validation)
+SERVICE_ACCOUNT_JSON = os.environ["SERVICE_ACCOUNT_JSON"]
+SHEET_URL = os.environ["SHEET_URL"]
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 
 # ==========================
 # 📑 Google Sheets Setup
@@ -30,7 +32,7 @@ SCOPES = ["https://spreadsheets.google.com/feeds",
 creds_dict = json.loads(SERVICE_ACCOUNT_JSON)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
 gc = gspread.authorize(creds)
-sheet = gc.open_by_url(SHEET_URL).sheet1  # first tab
+sheet = gc.open_by_url(SHEET_URL).sheet1
 
 # ---------------------------------------
 # Header aliasing for mixed names
@@ -101,7 +103,7 @@ def is_valid_twilio_request(req) -> bool:
     return validator.validate(req.url, req.form.to_dict(), signature)
 
 # ==========================
-# 📩 Background handlers with debug
+# 📩 Background handlers
 # ==========================
 def handle_unsubscribe(row_idx):
     try:

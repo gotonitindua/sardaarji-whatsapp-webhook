@@ -81,15 +81,32 @@ def iso_now():
 def normalize_e164(wa_from: str) -> str:
     return (wa_from or "").replace("whatsapp:", "").strip()
 
+# ==========================
+# 📌 FIXED phone matching
+# ==========================
 def find_row_index_by_phone(e164: str):
     records = sheet.get_all_records()
     phone_header = HEADER_MAP.get("phone", "Phone")
+
+    # Normalize incoming number
+    clean_incoming = e164.replace("+", "").replace(" ", "").replace("-", "")
+
     for idx, row in enumerate(records, start=2):
         phone = str(row.get(phone_header, "")).strip()
         if not phone:
             continue
-        if phone == e164 or phone.replace("+","") == e164.replace("+",""):
+
+        # Normalize stored number too
+        clean_stored = phone.replace("+", "").replace(" ", "").replace("-", "")
+
+        # Match rules:
+        if clean_incoming == clean_stored:
             return idx, row
+        if clean_incoming.endswith(clean_stored):
+            return idx, row
+        if clean_stored.endswith(clean_incoming):
+            return idx, row
+
     return None, None
 
 # ==========================

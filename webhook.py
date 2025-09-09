@@ -1,3 +1,5 @@
+import sys
+sys.stdout.reconfigure(line_buffering=True)
 import os
 import json
 import threading
@@ -8,6 +10,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.request_validator import RequestValidator
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+
 
 app = Flask(__name__)
 

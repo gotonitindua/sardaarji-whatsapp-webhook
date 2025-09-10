@@ -152,6 +152,19 @@ def status_callback():
     return "OK", 200
 
 # ==========================
+# 🌐 Health Check
+# ==========================
+@app.get("/")
+def health_check():
+    return {
+        "status": "ok",
+        "service": "sardaarji-whatsapp-webhook",
+        "time": datetime.utcnow().isoformat() + "Z"
+    }
+
+
+
+# ==========================
 # 🚀 Entrypoint
 # ==========================
 if __name__ == "__main__":

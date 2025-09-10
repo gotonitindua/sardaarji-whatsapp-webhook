@@ -187,6 +187,52 @@ def inbound():
     resp.message("🍛 Thanks for contacting Sardaar Ji Indian Cuisine Panama!")
     return str(resp)
 
+
+# ==========================
+# 📦 Delivery Status Handler
+# ==========================
+@app.post("/twilio/status")
+def status_callback():
+    if not is_valid_twilio_request(request):
+        abort(403)
+
+    data = request.form.to_dict()
+    sid = data.get("MessageSid") or data.get("SmsSid")
+    status = data.get("MessageStatus")
+    error_code = data.get("ErrorCode")
+    to_number = normalize_e164(data.get("To"))
+
+    print(f"[STATUS] SID={sid} To={to_number} Status={status} Error={error_code}")
+
+    # OPTIONAL: Update Google Sheet (instead of just printing)
+    try:
+        sh = gc.open_by_url(SHEET_URL)
+        ws = sh.worksheet("Message Log")
+        records = ws.get_all_records()
+
+        for i, r in enumerate(records, start=2):
+            if r.get("SID") == sid:
+                # Update existing row
+                set_row_values(ws, i, {
+                    "Status": status,
+                    "Error": error_code or ""
+                })
+                break
+        else:
+            # If SID not found, append a new row
+            ws.append_row([
+                datetime.now().strftime("%d-%m-%Y %H:%M"),
+                "", to_number, "Status Update",
+                "", status, error_code or "", sid
+            ])
+    except Exception as e:
+        print("[ERROR] Failed to update status in sheet:", e)
+        traceback.print_exc()
+
+    return "OK", 200
+
+
+
 # ==========================
 # 🚀 Entrypoint a
 # ==========================

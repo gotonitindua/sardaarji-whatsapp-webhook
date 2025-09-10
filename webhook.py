@@ -18,7 +18,8 @@ print("[STARTUP] Webhook service started and ready (SQLite).")
 # 🔐 Environment Config
 # ==========================
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
-DB_PATH = "customers.db"
+DB_PATH = os.path.join(os.path.dirname(__file__), "customers.db")
+
 
 # ==========================
 # 📑 SQLite Setup
@@ -109,6 +110,7 @@ def handle_unsubscribe(phone):
     except Exception as e:
         print("[ERROR] handle_unsubscribe failed:", e)
         traceback.print_exc()
+print("[DB DEBUG] DB path in webhook:", os.path.abspath(DB_PATH))
 
 
 def handle_resubscribe(phone):

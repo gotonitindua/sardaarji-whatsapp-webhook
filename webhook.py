@@ -45,7 +45,10 @@ _HEADER_LOGICALS = {
     "optin_date": ["opt in date", "opt_in date", "opt_in_date", "optindate"],
     "optin_source": ["opt_in source", "opt in source", "optinsource"],
     "optout_date": ["opt out date", "opt_out date", "opt_out_date", "optoutdate"],
-    "phone": ["Phone", "phone"]
+    "phone": ["Phone", "phone"],
+    "status": ["Status", "status"],
+    "error": ["Error", "error"],
+    "sid": ["SID", "sid"]
 }
 
 def _build_header_map(ws):
@@ -63,13 +66,27 @@ def _build_header_map(ws):
 HEADER_MAP = _build_header_map(sheet)
 
 def set_row_values(ws, row_idx: int, updates_logical: dict):
+    """
+    Generic updater: works for Customer sheet (dnc, optin_date, etc.)
+    and Message Log sheet (Status, Error, SID).
+    """
     headers = ws.row_values(1)
-    cur = ws.row_values(row_idx); cur += [""] * (len(headers) - len(cur))
+    cur = ws.row_values(row_idx)
+    cur += [""] * (len(headers) - len(cur))
     hmap = {h: i for i, h in enumerate(headers)}
+
     for logical_key, value in updates_logical.items():
-        actual = HEADER_MAP.get(logical_key)
-        if actual in hmap:
+        # Try to map via HEADER_MAP
+        actual = None
+        if logical_key in HEADER_MAP:
+            actual = HEADER_MAP[logical_key]
+        else:
+            # fallback: look directly in headers
+            if logical_key in headers:
+                actual = logical_key
+        if actual and actual in hmap:
             cur[hmap[actual]] = value
+
     rng = ws.range(row_idx, 1, row_idx, len(headers))
     for i, cell in enumerate(rng):
         cell.value = cur[i]
@@ -95,18 +112,13 @@ def find_row_index_by_phone(e164: str):
         phone = str(row.get(phone_header, "")).strip()
         if not phone:
             continue
-
-        # Normalize stored number too
         clean_stored = phone.replace("+", "").replace(" ", "").replace("-", "")
-
-        # Match rules:
         if clean_incoming == clean_stored:
             return idx, row
         if clean_incoming.endswith(clean_stored):
             return idx, row
         if clean_stored.endswith(clean_incoming):
             return idx, row
-
     return None, None
 
 # ==========================
@@ -187,7 +199,6 @@ def inbound():
     resp.message("🍛 Thanks for contacting Sardaar Ji Indian Cuisine Panama!")
     return str(resp)
 
-
 # ==========================
 # 📦 Delivery Status Handler
 # ==========================
@@ -199,42 +210,53 @@ def status_callback():
     data = request.form.to_dict()
     sid = data.get("MessageSid") or data.get("SmsSid")
     status = data.get("MessageStatus")
-    error_code = data.get("ErrorCode")
+    error_code = data.get("ErrorCode") or ""
+    error_message = data.get("ErrorMessage") or ""
     to_number = normalize_e164(data.get("To"))
 
-    print(f"[STATUS] SID={sid} To={to_number} Status={status} Error={error_code}")
+    print(f"[STATUS] SID={sid} To={to_number} Status={status} Error={error_code} {error_message}")
 
-    # OPTIONAL: Update Google Sheet (instead of just printing)
     try:
         sh = gc.open_by_url(SHEET_URL)
         ws = sh.worksheet("Message Log")
-        records = ws.get_all_records()
 
+        # Ensure headers are correct
+        required_headers = ["Date","Name","Phone","Type","Message","Status","Error","SID"]
+        headers = ws.row_values(1)
+        if headers != required_headers:
+            ws.update("A1:H1", [required_headers])
+            headers = required_headers
+
+        records = ws.get_all_records()
+        sid_col = headers.index("SID") + 1
+        status_col = headers.index("Status") + 1
+        error_col = headers.index("Error") + 1
+
+        updated = False
         for i, r in enumerate(records, start=2):
-            if r.get("SID") == sid:
-                # Update existing row
-                set_row_values(ws, i, {
-                    "Status": status,
-                    "Error": error_code or ""
-                })
+            if str(r.get("SID")) == str(sid):
+                ws.update_cell(i, status_col, status)
+                ws.update_cell(i, error_col, error_code or error_message)
+                print(f"[STATUS] Updated row {i} for SID {sid}")
+                updated = True
                 break
-        else:
-            # If SID not found, append a new row
+
+        if not updated:
             ws.append_row([
                 datetime.now().strftime("%d-%m-%Y %H:%M"),
                 "", to_number, "Status Update",
-                "", status, error_code or "", sid
+                "", status, error_code or error_message, sid
             ])
+            print(f"[STATUS] Appended new row for SID {sid}")
+
     except Exception as e:
         print("[ERROR] Failed to update status in sheet:", e)
         traceback.print_exc()
 
     return "OK", 200
 
-
-
 # ==========================
-# 🚀 Entrypoint a
+# 🚀 Entrypoint
 # ==========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))

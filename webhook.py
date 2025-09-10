@@ -208,10 +208,10 @@ def status_callback():
         abort(403)
 
     data = request.form.to_dict()
-    sid = data.get("MessageSid") or data.get("SmsSid")
-    status = data.get("MessageStatus")
-    error_code = data.get("ErrorCode") or ""
-    error_message = data.get("ErrorMessage") or ""
+    sid = (data.get("MessageSid") or data.get("SmsSid") or "").strip()
+    status = (data.get("MessageStatus") or "").strip()
+    error_code = (data.get("ErrorCode") or "").strip()
+    error_message = (data.get("ErrorMessage") or "").strip()
     to_number = normalize_e164(data.get("To"))
 
     print(f"[STATUS] SID={sid} To={to_number} Status={status} Error={error_code} {error_message}")
@@ -227,17 +227,20 @@ def status_callback():
             ws.update("A1:H1", [required_headers])
             headers = required_headers
 
-        records = ws.get_all_records()
+        # Column indexes
         sid_col = headers.index("SID") + 1
         status_col = headers.index("Status") + 1
         error_col = headers.index("Error") + 1
 
+        records = ws.get_all_records()
         updated = False
-        for i, r in enumerate(records, start=2):
-            if str(r.get("SID")) == str(sid):
+
+        for i, r in enumerate(records, start=2):  # start=2 for row index
+            sid_in_sheet = str(r.get("SID", "")).strip()
+            if sid_in_sheet == sid:
                 ws.update_cell(i, status_col, status)
                 ws.update_cell(i, error_col, error_code or error_message)
-                print(f"[STATUS] Updated row {i} for SID {sid}")
+                print(f"[STATUS] ✅ Updated row {i} for SID {sid} → {status}")
                 updated = True
                 break
 
@@ -247,13 +250,14 @@ def status_callback():
                 "", to_number, "Status Update",
                 "", status, error_code or error_message, sid
             ])
-            print(f"[STATUS] Appended new row for SID {sid}")
+            print(f"[STATUS] ➕ Appended new row for SID {sid}")
 
     except Exception as e:
         print("[ERROR] Failed to update status in sheet:", e)
         traceback.print_exc()
 
     return "OK", 200
+
 
 # ==========================
 # 🚀 Entrypoint

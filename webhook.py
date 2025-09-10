@@ -3,6 +3,7 @@ import sys
 import threading
 import traceback
 import sqlite3
+import os
 from datetime import datetime
 from flask import Flask, request, abort
 from twilio.twiml.messaging_response import MessagingResponse

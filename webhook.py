@@ -92,10 +92,17 @@ def handle_unsubscribe(phone):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        # Try to update first
         cur.execute(
             "UPDATE customers SET dnc=1, optout_date=? WHERE phone=?",
             (iso_now(), phone)
         )
+        if cur.rowcount == 0:
+            # If not found, insert new row
+            cur.execute(
+                "INSERT INTO customers (phone, dnc, optout_date) VALUES (?, 1, ?)",
+                (phone, iso_now())
+            )
         conn.commit()
         conn.close()
         print(f"[UNSUBSCRIBE] ✅ Phone {phone} set to DNC=1")
@@ -103,20 +110,29 @@ def handle_unsubscribe(phone):
         print("[ERROR] handle_unsubscribe failed:", e)
         traceback.print_exc()
 
+
 def handle_resubscribe(phone):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        # Try to update first
         cur.execute(
             "UPDATE customers SET dnc=0, optin_source=?, optin_date=? WHERE phone=?",
             ("Resubscribe", iso_now(), phone)
         )
+        if cur.rowcount == 0:
+            # If not found, insert new row
+            cur.execute(
+                "INSERT INTO customers (phone, dnc, optin_source, optin_date) VALUES (?, 0, ?, ?)",
+                (phone, "Resubscribe", iso_now())
+            )
         conn.commit()
         conn.close()
         print(f"[RESUBSCRIBE] ✅ Phone {phone} reactivated")
     except Exception as e:
         print("[ERROR] handle_resubscribe failed:", e)
         traceback.print_exc()
+
 
 def update_message_status(sid, status, error):
     try:

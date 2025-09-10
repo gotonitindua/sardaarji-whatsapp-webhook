@@ -60,9 +60,11 @@ def init_db():
     print("[DB] ✅ Tables ensured (customers, messages)")
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    # Allow multithread access + wait if DB is busy
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def iso_now():
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"

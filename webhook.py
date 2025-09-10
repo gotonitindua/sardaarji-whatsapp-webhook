@@ -158,7 +158,7 @@ def status_callback():
 # ==========================
 
 # ==========================
-# 🌐 Health Check 1
+# 🌐 Health Check
 # ==========================
 @app.get("/")
 def health_check():

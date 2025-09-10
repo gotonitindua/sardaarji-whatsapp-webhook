@@ -21,8 +21,44 @@ TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 DB_PATH = "customers.db"
 
 # ==========================
-# 📑 SQLite Helpers
+# 📑 SQLite Setup
 # ==========================
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # Customers table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        phone TEXT UNIQUE,
+        dnc BOOLEAN DEFAULT 0,
+        optin_date TEXT,
+        optin_source TEXT,
+        optout_date TEXT
+    )
+    """)
+
+    # Messages table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT,
+        name TEXT,
+        phone TEXT,
+        type TEXT,
+        message TEXT,
+        status TEXT,
+        error TEXT,
+        sid TEXT UNIQUE
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+    print("[DB] ✅ Tables ensured (customers, messages)")
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -33,6 +69,9 @@ def iso_now():
 
 def normalize_e164(wa_from: str) -> str:
     return (wa_from or "").replace("whatsapp:", "").strip()
+
+# Ensure DB is ready at startup
+init_db()
 
 # ==========================
 # 🔒 Twilio Validation
@@ -85,9 +124,15 @@ def update_message_status(sid, status, error):
             "UPDATE messages SET status=?, error=? WHERE sid=?",
             (status, error, sid)
         )
+        if cur.rowcount == 0:
+            # If no existing row, insert new record
+            cur.execute(
+                "INSERT INTO messages (date, status, error, sid) VALUES (?, ?, ?, ?)",
+                (iso_now(), status, error, sid)
+            )
         conn.commit()
         conn.close()
-        print(f"[STATUS] ✅ Updated SID={sid} → {status} ({error})")
+        print(f"[STATUS] ✅ Updated/Inserted SID={sid} → {status} ({error})")
     except Exception as e:
         print("[ERROR] update_message_status failed:", e)
         traceback.print_exc()
@@ -102,9 +147,24 @@ def inbound():
 
     from_num = normalize_e164(request.form.get("From"))
     body = (request.form.get("Body") or "").strip().upper()
+    sid = (request.form.get("MessageSid") or "").strip()
     resp = MessagingResponse()
 
     print(f"[INBOUND] Message from {from_num}: {body}")
+
+    # Save inbound message in DB
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO messages (date, phone, type, message, status, sid)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (iso_now(), from_num, "inbound", body, "received", sid))
+        conn.commit()
+        conn.close()
+        print(f"[DB] ✅ Inbound message logged for {from_num}")
+    except Exception as e:
+        print("[ERROR] Failed to insert inbound message:", e)
 
     # Unsubscribe
     if body in {"SALIR", "UNSUBSCRIBE", "CANCEL", "END", "STOP", "BAJA", "ALTO"}:
@@ -151,12 +211,6 @@ def status_callback():
 
     return "OK", 200
 
-
-
-# ==========================
-# 🚀 Entrypoint
-# ==========================
-
 # ==========================
 # 🌐 Health Check
 # ==========================
@@ -168,6 +222,8 @@ def health_check():
         "time": datetime.utcnow().isoformat() + "Z"
     }
 
-
+# ==========================
+# 🚀 Entrypoint
+# ==========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
